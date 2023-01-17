@@ -45,11 +45,19 @@ public class WebWeaverClient {
     }
 
     public LoginResult login(Credentials credentials) {
-        return login(credentials, null);
+        return login(credentials, null, false);
     }
 
-    public LoginResult login(Credentials credentials, CreateTrustInfo createTrustInfo) {
-        endPoint = resolveEndPoint(credentials.getEmail());
+    public LoginResult login(Credentials credentials, boolean stripEmailFromHostRequest) {
+        return login(credentials, null, stripEmailFromHostRequest);
+    }
+
+    public LoginResult login(Credentials credentials, CreateTrustInfo createTrustInfo){
+        return login(credentials, createTrustInfo, false);
+    }
+
+    public LoginResult login(Credentials credentials, CreateTrustInfo createTrustInfo, boolean stripEmailFromHostRequest) {
+        endPoint = resolveEndPoint(credentials.getEmail(), stripEmailFromHostRequest);
 
         List<Request<?>> requests = new ArrayList<>();
         requests.add(credentials.encode(this));
@@ -209,7 +217,10 @@ public class WebWeaverClient {
         }
     }
 
-    private String resolveEndPoint(String email) {
+    private String resolveEndPoint(String email, boolean stripEmailFromHostRequest) {
+        if(stripEmailFromHostRequest && email.contains("@"))
+            email = email.substring(email.indexOf("@"));
+
         HttpPost req = new HttpPost("https://fork.webweaver.de/service/get_responsible_host.php");
         req.setEntity(new UrlEncodedFormEntity(List.of(new BasicNameValuePair("login", email))));
 
