@@ -13,15 +13,13 @@ import de.konsl.webweaverapi.scopes.CalendarScope;
 import de.konsl.webweaverapi.scopes.MembersScope;
 import de.konsl.webweaverapi.scopes.MessagesScope;
 import de.konsl.webweaverapi.scopes.MessengerScope;
-import org.apache.http.Consts;
-import org.apache.http.client.entity.UrlEncodedFormEntity;
-import org.apache.http.client.methods.CloseableHttpResponse;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.entity.StringEntity;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClients;
-import org.apache.http.message.BasicNameValuePair;
-import org.apache.http.util.EntityUtils;
+import org.apache.hc.client5.http.classic.methods.HttpPost;
+import org.apache.hc.client5.http.entity.UrlEncodedFormEntity;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.core5.http.io.entity.EntityUtils;
+import org.apache.hc.core5.http.io.entity.StringEntity;
+import org.apache.hc.core5.http.message.BasicNameValuePair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -85,21 +83,24 @@ public class WebWeaverClient {
         assert allSuccess(responses);
     }
 
-    public GetNonceResponse getNonce(){
+    public GetNonceResponse getNonce() {
         return findResponse(Objects.requireNonNull(requestInternal(List.of(new GetNonceRequest()), false)),
                 GetNonceResponse.class);
     }
 
-    public MessagesScope getMessagesScope(){
+    public MessagesScope getMessagesScope() {
         return new MessagesScope(this);
     }
-    public MembersScope getMembersScope(String login){
+
+    public MembersScope getMembersScope(String login) {
         return new MembersScope(this, login);
     }
-    public MessengerScope getMessengerScope(){
+
+    public MessengerScope getMessengerScope() {
         return new MessengerScope(this);
     }
-    public CalendarScope getCalendarScope(){
+
+    public CalendarScope getCalendarScope() {
         return new CalendarScope(this);
     }
 
@@ -111,7 +112,7 @@ public class WebWeaverClient {
         List<Request<?>> requests = new ArrayList<>();
         requests.add(new SetSessionRequest(sessionID));
 
-        if(focus != FocusObject.GLOBAL)
+        if (focus != FocusObject.GLOBAL)
             requests.add(new SetFocusRequest(focus, focusLogin));
 
         requests.add(request);
@@ -121,7 +122,7 @@ public class WebWeaverClient {
         assert allSuccess(responses);
 
         Response mainResponse = responses.get(focus == FocusObject.GLOBAL ? 1 : 2);
-        if(mainResponse.isError())
+        if (mainResponse.isError())
             throw new WebWeaverException(mainResponse.as());
 
         return mainResponse.as();
@@ -145,19 +146,18 @@ public class WebWeaverClient {
 
         req.setEntity(new StringEntity(encoded.toString(), StandardCharsets.UTF_8));
 
-        CloseableHttpResponse response;
         try {
-            response = httpClient.execute(req);
-            String content = EntityUtils.toString(response.getEntity());
-            response.close();
+            return httpClient.execute(req, response -> {
+                String content = EntityUtils.toString(response.getEntity());
+                response.close();
 
-            JsonArray responseArray = JsonParser.parseString(content).getAsJsonArray();
+                JsonArray responseArray = JsonParser.parseString(content).getAsJsonArray();
 
-            List<Response> responses = new ArrayList<>();
-            for (int i = 0; i < responseArray.size(); i++)
-                responses.add(decodeResponse(responseArray.get(i).getAsJsonObject(), requests.get(i).getResponseSupplier()));
-            return responses;
-
+                List<Response> responses = new ArrayList<>();
+                for (int i = 0; i < responseArray.size(); i++)
+                    responses.add(decodeResponse(responseArray.get(i).getAsJsonObject(), requests.get(i).getResponseSupplier()));
+                return responses;
+            });
         } catch (IOException e) {
             logger.error("Could not perform requests: " + encoded);
             return null;
@@ -211,18 +211,18 @@ public class WebWeaverClient {
 
     private String resolveEndPoint(String email) {
         HttpPost req = new HttpPost("https://fork.webweaver.de/service/get_responsible_host.php");
-        req.setEntity(new UrlEncodedFormEntity(List.of(new BasicNameValuePair("login", email)), Consts.UTF_8));
+        req.setEntity(new UrlEncodedFormEntity(List.of(new BasicNameValuePair("login", email))));
 
-        CloseableHttpResponse response;
         try {
-            response = httpClient.execute(req);
-            String stringContent = EntityUtils.toString(response.getEntity());
-            response.close();
+            return httpClient.execute(req, response -> {
+                String stringContent = EntityUtils.toString(response.getEntity());
+                response.close();
 
-            int start = stringContent.indexOf("<host>");
-            int end = stringContent.indexOf("</host>");
-            remoteHost = stringContent.substring(start, end).substring(6);
-            return "https://" + remoteHost + "/jsonrpc.php";
+                int start = stringContent.indexOf("<host>");
+                int end = stringContent.indexOf("</host>");
+                remoteHost = stringContent.substring(start, end).substring(6);
+                return "https://" + remoteHost + "/jsonrpc.php";
+            });
         } catch (IOException | IndexOutOfBoundsException e) {
             logger.error("Could not resolve end point for: " + email, e);
             return null;
