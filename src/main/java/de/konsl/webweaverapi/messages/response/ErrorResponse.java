@@ -69,4 +69,14 @@ public class ErrorResponse extends Response {
     public boolean isError() {
         return true;
     }
+
+    @Override
+    public String toString() {
+        return "ErrorResponse{" +
+                "method='" + method + '\'' +
+                ", returnCode='" + returnCode + '\'' +
+                ", error='" + error + '\'' +
+                ", errno='" + errno + '\'' +
+                '}';
+    }
 }
