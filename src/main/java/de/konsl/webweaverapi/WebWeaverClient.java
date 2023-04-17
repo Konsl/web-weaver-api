@@ -5,9 +5,9 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import de.konsl.webweaverapi.messages.request.*;
 import de.konsl.webweaverapi.messages.response.*;
+import de.konsl.webweaverapi.model.FocusObject;
 import de.konsl.webweaverapi.model.auth.CreateTrustInfo;
 import de.konsl.webweaverapi.model.auth.Credentials;
-import de.konsl.webweaverapi.model.FocusObject;
 import de.konsl.webweaverapi.model.auth.LoginResult;
 import de.konsl.webweaverapi.scopes.CalendarScope;
 import de.konsl.webweaverapi.scopes.MembersScope;
@@ -25,6 +25,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -44,19 +45,19 @@ public class WebWeaverClient {
         httpClient = HttpClients.createDefault();
     }
 
-    public LoginResult login(Credentials credentials) {
+    public LoginResult login(Credentials credentials) throws IOException, NoSuchAlgorithmException, WebWeaverException {
         return login(credentials, null, false);
     }
 
-    public LoginResult login(Credentials credentials, boolean stripEmailFromHostRequest) {
+    public LoginResult login(Credentials credentials, boolean stripEmailFromHostRequest) throws IOException, NoSuchAlgorithmException, WebWeaverException {
         return login(credentials, null, stripEmailFromHostRequest);
     }
 
-    public LoginResult login(Credentials credentials, CreateTrustInfo createTrustInfo){
+    public LoginResult login(Credentials credentials, CreateTrustInfo createTrustInfo) throws IOException, NoSuchAlgorithmException, WebWeaverException {
         return login(credentials, createTrustInfo, false);
     }
 
-    public LoginResult login(Credentials credentials, CreateTrustInfo createTrustInfo, boolean stripEmailFromHostRequest) {
+    public LoginResult login(Credentials credentials, CreateTrustInfo createTrustInfo, boolean stripEmailFromHostRequest) throws IOException, NoSuchAlgorithmException, WebWeaverException {
         endPoint = resolveEndPoint(credentials.getEmail(), stripEmailFromHostRequest);
 
         List<Request<?>> requests = new ArrayList<>();
@@ -70,9 +71,8 @@ public class WebWeaverClient {
         requests.add(new GetInformationRequest());
 
         List<Response> responses = requestInternal(requests, false);
-
-        assert responses != null;
-        assert allSuccess(responses);
+        if(anyFailed(responses))
+            throw new WebWeaverException(responses);
 
         sessionID = Objects.requireNonNull(findResponse(responses, GetInformationResponse.class)).getSessionID();
         return new LoginResult(findResponse(responses, LoginResponse.class),
@@ -81,17 +81,17 @@ public class WebWeaverClient {
                         null);
     }
 
-    public void logout() {
+    public void logout() throws IOException, WebWeaverException {
         List<Response> responses = request(List.of(
                 new SetSessionRequest(sessionID),
                 new LogoutRequest()
         ));
 
-        assert responses != null;
-        assert allSuccess(responses);
+        if(anyFailed(responses))
+            throw new WebWeaverException(responses);
     }
 
-    public GetNonceResponse getNonce() {
+    public GetNonceResponse getNonce() throws IOException {
         return findResponse(Objects.requireNonNull(requestInternal(List.of(new GetNonceRequest()), false)),
                 GetNonceResponse.class);
     }
@@ -112,11 +112,11 @@ public class WebWeaverClient {
         return new CalendarScope(this);
     }
 
-    public <T extends Response, U extends Request<T>> T request(U request, FocusObject focus) throws WebWeaverException {
+    public <T extends Response, U extends Request<T>> T request(U request, FocusObject focus) throws WebWeaverException, IOException {
         return request(request, focus, null);
     }
 
-    public <T extends Response, U extends Request<T>> T request(U request, FocusObject focus, String focusLogin) throws WebWeaverException {
+    public <T extends Response, U extends Request<T>> T request(U request, FocusObject focus, String focusLogin) throws WebWeaverException, IOException {
         List<Request<?>> requests = new ArrayList<>();
         requests.add(new SetSessionRequest(sessionID));
 
@@ -126,8 +126,8 @@ public class WebWeaverClient {
         requests.add(request);
 
         List<Response> responses = request(requests);
-        assert responses != null;
-        assert allSuccess(responses);
+        if(anyFailed(responses))
+            throw new WebWeaverException(responses);
 
         Response mainResponse = responses.get(focus == FocusObject.GLOBAL ? 1 : 2);
         if (mainResponse.isError())
@@ -136,11 +136,11 @@ public class WebWeaverClient {
         return mainResponse.as();
     }
 
-    public List<Response> request(List<Request<?>> requests) {
+    public List<Response> request(List<Request<?>> requests) throws IOException {
         return requestInternal(requests, true);
     }
 
-    private List<Response> requestInternal(List<Request<?>> requests, boolean loginRequired) {
+    private List<Response> requestInternal(List<Request<?>> requests, boolean loginRequired) throws IOException {
         if (loginRequired)
             ensureLoggedIn();
 
@@ -154,22 +154,17 @@ public class WebWeaverClient {
 
         req.setEntity(new StringEntity(encoded.toString(), StandardCharsets.UTF_8));
 
-        try {
-            return httpClient.execute(req, response -> {
-                String content = EntityUtils.toString(response.getEntity());
-                response.close();
+        return httpClient.execute(req, response -> {
+            String content = EntityUtils.toString(response.getEntity());
+            response.close();
 
-                JsonArray responseArray = JsonParser.parseString(content).getAsJsonArray();
+            JsonArray responseArray = JsonParser.parseString(content).getAsJsonArray();
 
-                List<Response> responses = new ArrayList<>();
-                for (int i = 0; i < responseArray.size(); i++)
-                    responses.add(decodeResponse(responseArray.get(i).getAsJsonObject(), requests.get(i).getResponseSupplier()));
-                return responses;
-            });
-        } catch (IOException e) {
-            logger.error("Could not perform requests: " + encoded);
-            return null;
-        }
+            List<Response> responses = new ArrayList<>();
+            for (int i = 0; i < responseArray.size(); i++)
+                responses.add(decodeResponse(responseArray.get(i).getAsJsonObject(), requests.get(i).getResponseSupplier()));
+            return responses;
+        });
     }
 
     private void ensureLoggedIn() {
@@ -218,7 +213,7 @@ public class WebWeaverClient {
     }
 
     private String resolveEndPoint(String email, boolean stripEmailFromHostRequest) {
-        if(stripEmailFromHostRequest && email.contains("@"))
+        if (stripEmailFromHostRequest && email.contains("@"))
             email = email.substring(email.indexOf("@"));
 
         HttpPost req = new HttpPost("https://fork.webweaver.de/service/get_responsible_host.php");
@@ -244,8 +239,8 @@ public class WebWeaverClient {
         return remoteHost;
     }
 
-    public static boolean allSuccess(List<Response> responses) {
-        return responses.stream().noneMatch(Response::isError);
+    public static boolean anyFailed(List<Response> responses) {
+        return responses.stream().anyMatch(Response::isError);
     }
 
     public static <T extends Response> T findResponse(List<Response> responses, Class<T> type) {

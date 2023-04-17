@@ -4,6 +4,7 @@ import de.konsl.webweaverapi.WebWeaverClient;
 import de.konsl.webweaverapi.messages.request.LoginRequest;
 import de.konsl.webweaverapi.messages.response.GetNonceResponse;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -75,34 +76,31 @@ public class Credentials {
         this.application = application;
     }
 
-    public LoginRequest encode(WebWeaverClient client) {
+    public LoginRequest encode(WebWeaverClient client) throws IOException, NoSuchAlgorithmException {
         if (type == TYPE_PASSWORD) {
             return new LoginRequest(email, password);
         }
         if (type == TYPE_TRUST) {
-            try {
-                GetNonceResponse nonce = client.getNonce();
-                assert nonce != null;
+            GetNonceResponse nonce = client.getNonce();
+            assert nonce != null;
 
-                StringBuilder salt = new StringBuilder();
-                char[] chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".toCharArray();
-                SecureRandom random = new SecureRandom();
-                int size = random.nextInt(5) + 8;
-                for (int i = 0; i < size; i++)
-                    salt.append(chars[random.nextInt(chars.length)]);
+            StringBuilder salt = new StringBuilder();
+            char[] chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".toCharArray();
+            SecureRandom random = new SecureRandom();
+            int size = random.nextInt(5) + 8;
+            for (int i = 0; i < size; i++)
+                salt.append(chars[random.nextInt(chars.length)]);
 
-                MessageDigest digest = MessageDigest.getInstance("SHA-256");
-                digest.reset();
-                digest.update((nonce.getKey() + salt + token).getBytes(StandardCharsets.UTF_8));
-                byte[] hash = digest.digest();
-                Formatter formatter = new Formatter();
-                for (byte b : hash) formatter.format("%02x", b);
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            digest.reset();
+            digest.update((nonce.getKey() + salt + token).getBytes(StandardCharsets.UTF_8));
+            byte[] hash = digest.digest();
+            Formatter formatter = new Formatter();
+            for (byte b : hash) formatter.format("%02x", b);
 
-                return new LoginRequest(email, DigestAlgorithm.SHA256, nonce.getID(), salt.toString(), formatter.toString(), application);
-            } catch (NoSuchAlgorithmException ignored) {
-            }
+            return new LoginRequest(email, DigestAlgorithm.SHA256, nonce.getID(), salt.toString(), formatter.toString(), application);
         }
 
-        return null;
+        throw new UnsupportedOperationException("Invalid login type: " + type);
     }
 }
