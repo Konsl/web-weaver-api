@@ -67,6 +67,7 @@ public enum Right {
     SHOWCASE_WRITE("showcase_write"),
     SUBSTITUTION_PLAN("substitution_plan"),
     SUBSTITUTION_PLAN_ADMIN("substitution_plan_admin"),
+    SYSADMIN("sysadmin"),
     TASKS("tasks"),
     TASKS_ADMIN("tasks_admin"),
     TASKS_WRITE("tasks_write"),
