@@ -6,6 +6,7 @@ import de.konsl.webweaverapi.messages.request.members.GetUsersRequest;
 import de.konsl.webweaverapi.model.FocusObject;
 import de.konsl.webweaverapi.model.user.User;
 
+import java.io.IOException;
 import java.util.List;
 
 public class MembersScope extends Scope {
@@ -26,15 +27,15 @@ public class MembersScope extends Scope {
         this.login = login;
     }
 
-    public List<User> getUsers() throws WebWeaverException {
+    public List<User> getUsers() throws WebWeaverException, IOException {
         return getUsers(false, false);
     }
 
-    public List<User> getUsers(boolean onlyOnline) throws WebWeaverException {
+    public List<User> getUsers(boolean onlyOnline) throws WebWeaverException, IOException {
         return getUsers(false, onlyOnline);
     }
 
-    public List<User> getUsers(boolean onlyOnline, boolean getMiniatures) throws WebWeaverException {
+    public List<User> getUsers(boolean onlyOnline, boolean getMiniatures) throws WebWeaverException, IOException {
         return getClient().request(new GetUsersRequest(onlyOnline, getMiniatures), FocusObject.MEMBERS, login).getUsers();
     }
 }
